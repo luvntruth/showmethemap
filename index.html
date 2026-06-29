@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>멧빵뿡 GPX 지도 뷰어 🚴</title>
+  <title>GPX 지도 뷰어 🚴</title>
   <meta name="description" content="업로드한 GPX 경로를 지도·고도·카카오 로드뷰로 한눈에 보는 자전거 라이딩 뷰어">
 
   <!-- 파비콘 (자전거 이모지 SVG) -->
@@ -11,8 +11,8 @@
 
   <!-- Open Graph (카카오톡·페이스북·디스코드 등 링크 미리보기) -->
   <meta property="og:type" content="website">
-  <meta property="og:site_name" content="멧빵뿡 GPX 지도 뷰어">
-  <meta property="og:title" content="멧빵뿡 GPX 지도 뷰어 🚴">
+  <meta property="og:site_name" content="GPX 지도 뷰어">
+  <meta property="og:title" content="GPX 지도 뷰어 🚴">
   <meta property="og:description" content="업로드한 GPX 경로를 지도·고도·카카오 로드뷰로 한눈에">
   <meta property="og:url" content="https://luvntruth.github.io/showmethemap/">
   <meta property="og:image" content="https://luvntruth.github.io/showmethemap/og-image.png">
@@ -22,7 +22,7 @@
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="멧빵뿡 GPX 지도 뷰어 🚴">
+  <meta name="twitter:title" content="GPX 지도 뷰어 🚴">
   <meta name="twitter:description" content="업로드한 GPX 경로를 지도·고도·카카오 로드뷰로 한눈에">
   <meta name="twitter:image" content="https://luvntruth.github.io/showmethemap/og-image.png">
 
@@ -486,6 +486,14 @@
       background: #ebd200;
       box-shadow: 0 4px 10px rgba(254, 229, 0, 0.2);
     }
+    .sv-navi {
+      background: #2272eb;
+      color: white;
+    }
+    .sv-navi:hover {
+      background: #1a5fcc;
+      box-shadow: 0 4px 10px rgba(34, 114, 235, 0.25);
+    }
 
     /* 고도 관련 미니 통계 */
     .elevation-stats {
@@ -873,7 +881,7 @@
       </div>
       <div class="header-text">
         <h1>GPX 지도 뷰어</h1>
-        <p>보스를 위한 맞춤형 분석 서비스</p>
+        <p>GPX 경로 · 고도 · 로드뷰 한눈에</p>
       </div>
     </div>
 
@@ -887,7 +895,7 @@
 
     <!-- 현재 불러온 파일 정보 -->
     <div class="file-info-card">
-      <div class="file-name" id="fileName">멧빵뿡.gpx (기본 데이터)</div>
+      <div class="file-name" id="fileName">샘플 경로</div>
       <div class="file-type">GPX</div>
     </div>
 
@@ -974,6 +982,7 @@
       </div>
       <div class="streetview-buttons">
         <a id="btnKakaoRoad" class="btn-sv sv-kakao" target="_blank" onclick="return openKakaoRoadview(event)"><i class="fa-solid fa-map"></i> 카카오 로드뷰 보기</a>
+        <a id="btnKakaoNavi" class="btn-sv sv-navi" href="#" onclick="startKakaoNavi(); return false;"><i class="fa-solid fa-route"></i> 카카오내비로 안내</a>
       </div>
     </div>
 
@@ -1057,6 +1066,14 @@
         });
       };
       document.head.appendChild(kakaoScript);
+
+      // 카카오 JavaScript SDK (길안내/내비용)
+      const kakaoJsSdk = document.createElement('script');
+      kakaoJsSdk.src = 'https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js';
+      kakaoJsSdk.onload = () => {
+        if (window.Kakao && !Kakao.isInitialized()) Kakao.init(KAKAO_JS_KEY);
+      };
+      document.head.appendChild(kakaoJsSdk);
     }
   </script>
 
@@ -1794,6 +1811,28 @@
       document.body.classList.remove('roadview-open');
       document.getElementById('roadviewPanel').classList.remove('active');
       setTimeout(() => { if (map) map.invalidateSize(); }, 350);
+    }
+
+    // 카카오내비로 현재 선택 지점까지 길안내 (모바일에서 카카오내비 앱 실행)
+    function startKakaoNavi() {
+      if (currentLat === null || currentLon === null) {
+        alert('먼저 재생 버튼을 누르거나 경로 위를 클릭하여 지점을 선택해주세요!');
+        return;
+      }
+      if (typeof Kakao === 'undefined' || !Kakao.Navi) {
+        alert('카카오내비 길안내는 카카오내비 앱이 설치된 모바일에서 이용할 수 있어요.');
+        return;
+      }
+      try {
+        Kakao.Navi.start({
+          name: 'GPX 경로 지점',
+          x: currentLon,
+          y: currentLat,
+          coordType: 'wgs84'
+        });
+      } catch (e) {
+        alert('카카오내비를 실행할 수 없습니다. 모바일에서 다시 시도해주세요.');
+      }
     }
 
     // ===== 지도/로드뷰 경계선 드래그로 크기 조절 =====

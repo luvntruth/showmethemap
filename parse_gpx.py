@@ -44,7 +44,7 @@ if __name__ == '__main__':
     # 사용법: python parse_gpx.py [입력.gpx] [출력.js]
     # 인자를 생략하면 이 스크립트와 같은 폴더의 기본 파일을 사용합니다.
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    gpx_path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(base_dir, "멧빵뿡.gpx")
+    gpx_path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(base_dir, "sample.gpx")
     out_path = sys.argv[2] if len(sys.argv) > 2 else os.path.join(base_dir, "points.js")
 
     points = parse_gpx(gpx_path)
