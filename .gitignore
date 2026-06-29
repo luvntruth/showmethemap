@@ -1,0 +1,14 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+
+# Claude Code 로컬 설정 (개발용 dev server 설정)
+.claude/
+
+# bkit 로컬 상태 파일
+docs/.pdca-status.json
+docs/.bkit-memory.json

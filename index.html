@@ -1,0 +1,1827 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>멧빵뿡 GPX 지도 뷰어 🚴</title>
+  
+  <!-- 구글 폰트 -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Noto+Sans+KR:wght@300;400;700;900&display=swap" rel="stylesheet">
+  
+  <!-- Leaflet Map CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <script>
+    // ✏️ 카카오 로드뷰(실시간 동기화)를 쓰려면 카카오 JavaScript 키를 입력하세요!
+    // 발급: https://developers.kakao.com → 내 애플리케이션 → 앱 키 → JavaScript 키
+    // (카카오 개발자 콘솔의 [플랫폼 키 > JavaScript SDK 도메인]에 도메인 등록 필요. 예: http://localhost:8000)
+    const KAKAO_JS_KEY = '7d573ab2b445d944b51d10875a2074a5';
+  </script>
+
+  <style>
+    /* CSS 변수 정의 (Harmonious Color Palette & Glassmorphism) */
+    :root {
+      --bg-dark: #0f172a;
+      --card-bg: rgba(30, 41, 59, 0.75);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --text-main: #f8fafc;
+      --text-sub: #94a3b8;
+      --primary-color: #00f2fe;
+      --secondary-color: #4facfe;
+      --accent-color: #ff5e62;
+      --highlight-color: #ffd000;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Outfit', 'Noto Sans KR', sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* 전체 화면 지도 */
+    #map-container {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 1;
+    }
+    #map {
+      width: 100%;
+      height: 100%;
+      background-color: #1e293b;
+    }
+
+    /* 겹쳐지는 대시보드 구조 */
+    .overlay-panel {
+      position: absolute;
+      z-index: 10;
+      pointer-events: auto;
+    }
+
+    /* 왼쪽 사이드바 */
+    .sidebar {
+      top: 20px;
+      left: 20px;
+      width: 380px;
+      max-height: calc(100vh - 40px);
+      background: var(--card-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow-y: auto;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      transition: all 0.3s ease;
+    }
+
+    /* 스크롤바 커스텀 */
+    .sidebar::-webkit-scrollbar {
+      width: 6px;
+    }
+    .sidebar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .sidebar::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+    }
+    .sidebar::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    /* 타이틀 및 헤더 */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .header-logo {
+      background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 15px rgba(0, 242, 254, 0.3);
+    }
+    .header-logo i {
+      font-size: 22px;
+      color: #0f172a;
+    }
+    .header-text h1 {
+      font-size: 20px;
+      font-weight: 800;
+      background: linear-gradient(to right, #ffffff, #e2e8f0);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .header-text p {
+      font-size: 12px;
+      color: var(--text-sub);
+      margin-top: 2px;
+    }
+
+    /* 드래그 앤 드롭 존 */
+    .dropzone {
+      border: 2px dashed rgba(255, 255, 255, 0.15);
+      border-radius: 14px;
+      padding: 16px;
+      text-align: center;
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.02);
+      transition: all 0.2s ease;
+    }
+    .dropzone:hover {
+      border-color: var(--primary-color);
+      background: rgba(0, 242, 254, 0.05);
+      transform: translateY(-2px);
+    }
+    .dropzone i {
+      font-size: 24px;
+      background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 6px;
+    }
+    .dropzone p {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+    .dropzone span {
+      font-size: 10px;
+      color: var(--text-sub);
+      display: block;
+      margin-top: 4px;
+    }
+    #fileInput {
+      display: none;
+    }
+
+    /* 파일 정보 카드 */
+    .file-info-card {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .file-name {
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 220px;
+    }
+    .file-type {
+      font-size: 9px;
+      background: rgba(0, 242, 254, 0.15);
+      color: var(--primary-color);
+      padding: 2px 6px;
+      border-radius: 20px;
+      text-transform: uppercase;
+      font-weight: 800;
+    }
+
+    /* 공통 카드 섹션 */
+    .sidebar-section {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 16px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .section-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--primary-color);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* 통계 대시보드 그리드 */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .stat-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 14px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      position: relative;
+      overflow: hidden;
+      transition: all 0.2s ease;
+    }
+    .stat-card:hover {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.1);
+      transform: translateY(-2px);
+    }
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+      background: linear-gradient(to bottom, var(--primary-color), var(--secondary-color));
+      opacity: 0.7;
+    }
+    .stat-icon {
+      font-size: 14px;
+      color: var(--primary-color);
+      align-self: flex-start;
+      margin-bottom: 2px;
+    }
+    .stat-val {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--text-main);
+      font-family: 'Outfit', sans-serif;
+    }
+    .stat-unit {
+      font-size: 10px;
+      font-weight: 400;
+      color: var(--text-sub);
+      margin-left: 2px;
+    }
+    .stat-lbl {
+      font-size: 10px;
+      color: var(--text-sub);
+      font-weight: 600;
+    }
+
+    /* 재생 컨트롤러 */
+    .playback-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-control {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--text-main);
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      transition: all 0.2s ease;
+    }
+    .btn-control:hover {
+      background: var(--primary-color);
+      color: #0f172a;
+      transform: scale(1.05);
+      box-shadow: 0 4px 10px rgba(0, 242, 254, 0.3);
+    }
+    .speed-container {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text-sub);
+    }
+    .speed-container select {
+      background: #1e293b;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-main);
+      padding: 4px 6px;
+      border-radius: 6px;
+      outline: none;
+      cursor: pointer;
+      font-size: 11px;
+    }
+    .slider-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .slider-container input[type="range"] {
+      flex: 1;
+      -webkit-appearance: none;
+      height: 5px;
+      border-radius: 3px;
+      background: rgba(255, 255, 255, 0.1);
+      outline: none;
+    }
+    .slider-container input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--primary-color);
+      cursor: pointer;
+      box-shadow: 0 0 6px rgba(0, 242, 254, 0.5);
+      transition: all 0.1s ease;
+    }
+    .slider-container input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+    #playbackPercent {
+      font-size: 10px;
+      color: var(--text-sub);
+      width: 32px;
+      text-align: right;
+    }
+
+    /* 토글 스위치 */
+    .checkbox-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 34px;
+      height: 20px;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider-switch {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(255, 255, 255, 0.1);
+      transition: .3s;
+      border-radius: 20px;
+    }
+    .slider-switch:before {
+      position: absolute;
+      content: "";
+      height: 14px;
+      width: 14px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .3s;
+      border-radius: 50%;
+    }
+    input:checked + .slider-switch {
+      background-color: var(--primary-color);
+    }
+    input:checked + .slider-switch:before {
+      transform: translateX(14px);
+    }
+    .switch-lbl {
+      font-size: 11px;
+      color: var(--text-sub);
+      font-weight: 600;
+    }
+
+    /* 현재 위치 분석 */
+    .active-point-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .ap-stat {
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 8px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      border: 1px solid rgba(255, 255, 255, 0.03);
+    }
+    .ap-lbl {
+      font-size: 10px;
+      color: var(--text-sub);
+    }
+    .ap-val {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+    .streetview-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .btn-sv {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 8px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: 1px solid transparent;
+    }
+    .sv-kakao {
+      background: #fee500;
+      color: #191919;
+    }
+    .sv-kakao:hover {
+      background: #ebd200;
+      box-shadow: 0 4px 10px rgba(254, 229, 0, 0.2);
+    }
+
+    /* 고도 관련 미니 통계 */
+    .elevation-stats {
+      background: rgba(255, 255, 255, 0.02);
+      border-radius: 14px;
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+    }
+    .ele-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .ele-lbl {
+      color: var(--text-sub);
+      font-weight: 600;
+    }
+    .ele-val {
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    /* 지도 스타일 컨트롤러 */
+    .map-styles {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .style-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-sub);
+    }
+    .style-buttons {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+    .btn-style {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      color: var(--text-sub);
+      padding: 6px;
+      border-radius: 6px;
+      font-size: 10px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-align: center;
+    }
+    .btn-style:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text-main);
+    }
+    .btn-style.active {
+      background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+      color: #0f172a;
+      border: none;
+      box-shadow: 0 4px 10px rgba(0, 242, 254, 0.25);
+    }
+
+    /* 하단 고도 차트 패널 */
+    .chart-panel {
+      bottom: 20px;
+      left: 420px;
+      right: 20px;
+      height: 200px;
+      background: var(--card-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      padding: 14px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      transition: all 0.3s ease;
+    }
+
+    /* 카카오 로드뷰 내장 패널 (지도 우측 분할) */
+    .roadview-panel {
+      position: absolute;
+      z-index: 20;
+      top: 20px;
+      left: 420px;
+      right: 20px;
+      height: calc(100vh - 260px); /* 하단 차트 패널(200px) 공간 확보 */
+      background: var(--card-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      overflow: hidden;
+      display: none;
+      flex-direction: column;
+    }
+    .roadview-panel.active {
+      display: flex;
+    }
+    .roadview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-color);
+      flex-shrink: 0;
+    }
+    .roadview-title {
+      font-size: 14px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .roadview-title .badge {
+      background: #FEE500;
+      color: #181600;
+      font-size: 9px;
+      font-weight: 800;
+      padding: 2px 6px;
+      border-radius: 6px;
+      letter-spacing: 0.5px;
+    }
+    .roadview-coords {
+      font-size: 11px;
+      color: var(--text-sub);
+      margin-top: 3px;
+    }
+    .btn-close-rv {
+      background: transparent;
+      border: none;
+      color: var(--text-sub);
+      cursor: pointer;
+      font-size: 18px;
+      padding: 4px 8px;
+      border-radius: 8px;
+      transition: all 0.2s ease;
+    }
+    .btn-close-rv:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.08);
+    }
+    #roadviewContainer {
+      flex: 1;
+      width: 100%;
+      min-height: 0;
+      background: #1e293b;
+    }
+
+    /* 로드뷰 활성화 시: 좌측=지도 / 우측=로드뷰 좌우 분할 (--rv-width로 너비 조절) */
+    body.roadview-open #map-container {
+      right: var(--rv-width, 50%);
+    }
+    body.roadview-open .roadview-panel {
+      top: 0;
+      left: auto;
+      right: 0;
+      bottom: 0;
+      width: var(--rv-width, 50%);
+      height: auto;
+      border-radius: 0;
+      border-width: 0 0 0 1px;
+    }
+    body.roadview-open .chart-panel {
+      right: calc(var(--rv-width, 50%) + 20px);
+    }
+    /* 드래그로 크기 조절하는 경계선 */
+    #roadviewResizer {
+      display: none;
+    }
+    body.roadview-open #roadviewResizer {
+      display: block;
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: auto;
+      right: var(--rv-width, 50%);
+      width: 12px;
+      margin-right: -6px;
+      z-index: 30;
+      cursor: ew-resize;
+    }
+    #roadviewResizer::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 4px;
+      height: 56px;
+      border-radius: 3px;
+      background: rgba(255, 255, 255, 0.35);
+      transition: background 0.2s ease, height 0.2s ease;
+    }
+    #roadviewResizer:hover::after {
+      background: var(--primary-color);
+      height: 80px;
+    }
+    /* 드래그 중에는 전환 효과 끄기(끊김 방지) */
+    body.rv-resizing #map-container,
+    body.rv-resizing .chart-panel,
+    body.rv-resizing .roadview-panel {
+      transition: none !important;
+    }
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .chart-title {
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .chart-title i {
+      color: var(--primary-color);
+    }
+    .chart-hint {
+      font-size: 10px;
+      color: var(--text-sub);
+    }
+    .chart-container {
+      flex: 1;
+      position: relative;
+      min-height: 0;
+    }
+
+    /* Leaflet 컨트롤 버튼 커스텀 스타일 */
+    .leaflet-control-zoom {
+      border: 1px solid var(--border-color) !important;
+      box-shadow: none !important;
+      border-radius: 12px !important;
+      overflow: hidden;
+    }
+    .leaflet-control-zoom a {
+      background: var(--card-bg) !important;
+      backdrop-filter: blur(8px);
+      color: var(--text-main) !important;
+      border-bottom: 1px solid var(--border-color) !important;
+    }
+    .leaflet-control-zoom a:hover {
+      background: rgba(255, 255, 255, 0.1) !important;
+    }
+
+    /* 펄스 애니메이션 마커 (출발/도착/호버) */
+    .pulse-marker-start {
+      width: 14px;
+      height: 14px;
+      background: #10b981;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 0 15px #10b981;
+    }
+    .pulse-marker-end {
+      width: 14px;
+      height: 14px;
+      background: #ef4444;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 0 15px #ef4444;
+    }
+    .pulse-marker-hover {
+      width: 18px;
+      height: 18px;
+      background: var(--highlight-color);
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 0 0 rgba(255, 208, 0, 0.4);
+      animation: hoverPulse 1.5s infinite;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .pulse-marker-hover i {
+      color: #0f172a;
+      font-size: 10px;
+    }
+    @keyframes hoverPulse {
+      0% {
+        box-shadow: 0 0 0 0 rgba(255, 208, 0, 0.7);
+      }
+      70% {
+        box-shadow: 0 0 0 10px rgba(255, 208, 0, 0);
+      }
+      100% {
+        box-shadow: 0 0 0 0 rgba(255, 208, 0, 0);
+      }
+    }
+
+    /* 방향성 화살표 스타일 */
+    .direction-arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+    }
+
+    /* 모바일 반응형 처리 */
+    @media (max-width: 850px) {
+      body {
+        overflow-y: auto;
+        height: auto;
+      }
+      #map-container {
+        position: relative;
+        height: 400px;
+        width: 100%;
+      }
+      .sidebar {
+        position: relative;
+        top: 0;
+        left: 0;
+        width: 100%;
+        max-height: none;
+        border-radius: 0;
+        border-width: 0 0 1px 0;
+        box-shadow: none;
+        padding: 20px;
+      }
+      .chart-panel {
+        position: relative;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 240px;
+        border-radius: 0;
+        border-width: 1px 0 0 0;
+        box-shadow: none;
+        padding: 20px;
+      }
+      /* 모바일: 로드뷰는 하단에서 올라오는 시트 형태 */
+      .roadview-panel {
+        position: fixed;
+        top: auto;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100%;
+        height: 60vh;
+        border-radius: 16px 16px 0 0;
+        z-index: 1000;
+      }
+      /* 모바일에서는 좌우 분할 대신 하단 시트 유지 */
+      body.roadview-open #map-container {
+        right: 0;
+      }
+      body.roadview-open .roadview-panel {
+        top: auto;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100%;
+        height: 60vh;
+        border-radius: 16px 16px 0 0;
+        border-width: 0;
+      }
+      body.roadview-open .chart-panel {
+        right: 0;
+      }
+      body.roadview-open #roadviewResizer {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 전체 화면 지도 영역 -->
+  <div id="map-container">
+    <div id="map"></div>
+  </div>
+
+  <!-- 왼쪽 제어 및 통계 대시보드 -->
+  <div class="sidebar overlay-panel">
+    <div class="header">
+      <div class="header-logo">
+        <i class="fa-solid fa-route"></i>
+      </div>
+      <div class="header-text">
+        <h1>GPX 지도 뷰어</h1>
+        <p>보스를 위한 맞춤형 분석 서비스</p>
+      </div>
+    </div>
+
+    <!-- 파일 선택 및 드래그 구역 -->
+    <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+      <i class="fa-solid fa-cloud-arrow-up"></i>
+      <p>GPX 파일 드래그 & 드롭</p>
+      <span>또는 이 영역을 클릭하여 선택</span>
+      <input type="file" id="fileInput" accept=".gpx" />
+    </div>
+
+    <!-- 현재 불러온 파일 정보 -->
+    <div class="file-info-card">
+      <div class="file-name" id="fileName">멧빵뿡.gpx (기본 데이터)</div>
+      <div class="file-type">GPX</div>
+    </div>
+
+    <!-- 라이딩/하이킹 전체 통계 -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon"><i class="fa-solid fa-bicycle"></i></div>
+        <div class="stat-val" id="statDistance">0.00<span class="stat-unit">km</span></div>
+        <div class="stat-lbl">총 이동 거리</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon"><i class="fa-solid fa-stopwatch"></i></div>
+        <div class="stat-val" id="statDuration">00:00<span class="stat-unit">시간</span></div>
+        <div class="stat-lbl">총 소요 시간</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon"><i class="fa-solid fa-gauge-high"></i></div>
+        <div class="stat-val" id="statAvgSpeed">0.0<span class="stat-unit">km/h</span></div>
+        <div class="stat-lbl">평균 이동 속도</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon"><i class="fa-solid fa-mountain-sun"></i></div>
+        <div class="stat-val" id="statElevationGain">0<span class="stat-unit">m</span></div>
+        <div class="stat-lbl">누적 고도 상승</div>
+      </div>
+    </div>
+
+    <!-- 애니메이션 주행 컨트롤 패널 -->
+    <div class="sidebar-section">
+      <div class="section-title">
+        <i class="fa-solid fa-play"></i>
+        <span>경로 주행 시뮬레이션</span>
+      </div>
+      <div class="playback-controls">
+        <button id="btnPlay" class="btn-control" onclick="togglePlay()"><i class="fa-solid fa-play"></i></button>
+        <button id="btnStop" class="btn-control" onclick="stopPlayback()"><i class="fa-solid fa-stop"></i></button>
+        <div class="speed-container">
+          <label for="speedSelect">배속:</label>
+          <select id="speedSelect" onchange="changeSpeed(this.value)">
+            <option value="1">1x</option>
+            <option value="10">10x</option>
+            <option value="50" selected>50x</option>
+            <option value="150">150x</option>
+            <option value="400">400x</option>
+          </select>
+        </div>
+      </div>
+      <div class="slider-container">
+        <input type="range" id="playbackSlider" min="0" max="100" value="0" oninput="seekPlayback(this.value)" />
+        <span id="playbackPercent">0%</span>
+      </div>
+      <div class="checkbox-container">
+        <label class="switch">
+          <input type="checkbox" id="chkAutoPan" checked>
+          <span class="slider-switch"></span>
+        </label>
+        <span class="switch-lbl">지도 자동 추적</span>
+      </div>
+    </div>
+
+    <!-- 현재 선택/주행 지점 분석 및 로드뷰 -->
+    <div class="sidebar-section" id="activePointSection" style="display: none;">
+      <div class="section-title">
+        <i class="fa-solid fa-location-crosshairs"></i>
+        <span>현재 지점 실시간 분석</span>
+      </div>
+      <div class="active-point-stats">
+        <div class="ap-stat">
+          <span class="ap-lbl">현재 고도</span>
+          <span class="ap-val" id="apElevation">0 m</span>
+        </div>
+        <div class="ap-stat">
+          <span class="ap-lbl">현재 속도</span>
+          <span class="ap-val" id="apSpeed">0.0 km/h</span>
+        </div>
+        <div class="ap-stat">
+          <span class="ap-lbl">누적 거리</span>
+          <span class="ap-val" id="apDistance">0.00 km</span>
+        </div>
+        <div class="ap-stat">
+          <span class="ap-lbl">기록 시간</span>
+          <span class="ap-val" id="apTime">00:00:00</span>
+        </div>
+      </div>
+      <div class="streetview-buttons">
+        <a id="btnKakaoRoad" class="btn-sv sv-kakao" target="_blank" onclick="return openKakaoRoadview(event)"><i class="fa-solid fa-map"></i> 카카오 로드뷰 보기</a>
+      </div>
+    </div>
+
+    <!-- 고도 범위 정보 -->
+    <div class="elevation-stats">
+      <div class="ele-item">
+        <div class="ele-lbl">최저 고도</div>
+        <div class="ele-val" id="statMinEle">0 m</div>
+      </div>
+      <div class="ele-item" style="border-left: 1px solid rgba(255,255,255,0.08); padding-left: 20px; padding-right: 20px;">
+        <div class="ele-lbl">최고 고도</div>
+        <div class="ele-val" id="statMaxEle">0 m</div>
+      </div>
+      <div class="ele-item">
+        <div class="ele-lbl">포인트 수</div>
+        <div class="ele-val" id="statPoints">0 개</div>
+      </div>
+    </div>
+
+    <!-- 지도 스타일 변경 버튼들 -->
+    <div class="map-styles">
+      <div class="style-title">지도 스타일 변경</div>
+      <div class="style-buttons">
+        <div class="btn-style active" onclick="changeMapStyle('dark')">다크 모드</div>
+        <div class="btn-style" onclick="changeMapStyle('light')">라이트</div>
+        <div class="btn-style" onclick="changeMapStyle('osm')">일반 지도</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 하단 고도 차트 영역 -->
+  <div class="chart-panel overlay-panel">
+    <div class="chart-header">
+      <div class="chart-title">
+        <i class="fa-solid fa-chart-area"></i>
+        <span>고도 프로필 그래프</span>
+      </div>
+      <div class="chart-hint">그래프에 마우스를 올리거나 클릭하면 지도에 위치와 함께 로드뷰 연동 링크가 생성됩니다.</div>
+    </div>
+    <div class="chart-container">
+      <canvas id="elevationChart"></canvas>
+    </div>
+  </div>
+
+  <!-- 카카오 로드뷰 내장 패널 (지도와 실시간 동기화) -->
+  <div id="roadviewPanel" class="roadview-panel overlay-panel">
+    <div class="roadview-header">
+      <div>
+        <div class="roadview-title">
+          <i class="fa-solid fa-street-view" style="color: #FEE500;"></i>
+          카카오 로드뷰
+          <span class="badge">KAKAO</span>
+        </div>
+        <div class="roadview-coords" id="roadviewCoords">로드뷰에서 이동하면 지도가 따라갑니다.</div>
+      </div>
+      <button class="btn-close-rv" onclick="closeKakaoRoadview()" title="닫기"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div id="roadviewContainer"></div>
+  </div>
+
+  <!-- 지도/로드뷰 크기 조절 경계선 -->
+  <div id="roadviewResizer" title="드래그하여 크기 조절"></div>
+
+  <!-- Leaflet Map JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- 로컬 CORS 에러 우회를 위한 기본 points 데이터 (points.js) -->
+  <script src="points.js"></script>
+
+  <!-- 카카오 Maps SDK: JavaScript 키가 있을 경우에만 동적으로 로드 (로드뷰 실시간 동기화용) -->
+  <script>
+    if (KAKAO_JS_KEY) {
+      const kakaoScript = document.createElement('script');
+      kakaoScript.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_JS_KEY}&autoload=false`;
+      kakaoScript.onload = () => {
+        kakao.maps.load(() => {
+          window.kakaoMapsLoaded = true;
+          console.log('카카오 지도 SDK 로드 완료!');
+        });
+      };
+      document.head.appendChild(kakaoScript);
+    }
+  </script>
+
+  <script>
+    // 1. 지도 초기화 및 설정
+    let map;
+    let trackPath = null;
+    let trackShadowPath = null;
+    let startMarker = null;
+    let endMarker = null;
+    let hoverMarker = null;
+    let currentMapTile = null;
+    let arrowMarkersGroup = null;
+
+    // 지도 타일 레이어 정의
+    const tileLayers = {
+      dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 20
+      }),
+      light: L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 20
+      }),
+      osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19
+      })
+    };
+
+    // 지도 로딩
+    function initMap() {
+      map = L.map('map', {
+        zoomControl: true,
+        attributionControl: true
+      }).setView([37.5665, 126.9780], 13); // 서울 시청 기준 기본 좌표
+      
+      // 기본 테마: 다크 모드
+      changeMapStyle('dark');
+      
+      // 지도를 클릭했을 때 가까운 포인트를 찾아주는 기능 추가
+      map.on('click', function(e) {
+        if (activePoints.length === 0) return;
+        
+        let minDistance = Infinity;
+        let closestIndex = 0;
+        
+        // 클릭한 위치에서 가장 가까운 GPX 포인트 찾기
+        for (let i = 0; i < activePoints.length; i++) {
+          const pt = activePoints[i];
+          const dist = haversine(e.latlng.lat, e.latlng.lng, pt.lat, pt.lon);
+          if (dist < minDistance) {
+            minDistance = dist;
+            closestIndex = i;
+          }
+        }
+        
+        // 찾은 포인트로 이동 및 정보 갱신
+        if (minDistance < 2.0) { // 2km 이내에 있는 경우에만 반응
+          pausePlayback();
+          playbackIndex = closestIndex;
+          updatePlaybackUI(playbackIndex);
+        }
+      });
+    }
+
+    // 지도 테마 스위처
+    function changeMapStyle(styleName) {
+      if (currentMapTile) {
+        map.removeLayer(currentMapTile);
+      }
+      
+      currentMapTile = tileLayers[styleName];
+      currentMapTile.addTo(map);
+
+      // 활성화 버튼 클래스 변경
+      const buttons = document.querySelectorAll('.btn-style');
+      buttons.forEach(btn => btn.classList.remove('active'));
+      
+      const activeIdx = styleName === 'dark' ? 0 : (styleName === 'light' ? 1 : 2);
+      buttons[activeIdx].classList.add('active');
+    }
+
+    // 두 점 사이의 방위각(도 단위, 0~360) 계산하는 함수
+    function getBearing(lat1, lon1, lat2, lon2) {
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const lat1Rad = lat1 * Math.PI / 180;
+      const lat2Rad = lat2 * Math.PI / 180;
+      
+      const y = Math.sin(dLon) * Math.cos(lat2Rad);
+      const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) -
+                Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
+      
+      const brng = Math.atan2(y, x) * 180 / Math.PI;
+      return (brng + 360) % 360;
+    }
+
+    // 방향성 화살표 그리기 기능
+    function drawDirectionArrows(points) {
+      if (arrowMarkersGroup) {
+        map.removeLayer(arrowMarkersGroup);
+      }
+      arrowMarkersGroup = L.layerGroup().addTo(map);
+
+      // 전체 지점 중 일정 간격으로 화살표 그리기
+      const arrowCount = 30; // 지도상에 띄울 총 화살표 개수
+      const interval = Math.max(5, Math.floor(points.length / arrowCount));
+      
+      for (let i = 0; i < points.length - 1; i += interval) {
+        const pt1 = points[i];
+        const pt2 = points[i + 1];
+        
+        // 두 지점 간의 진행 방향 각도 계산
+        const angle = getBearing(pt1.lat, pt1.lon, pt2.lat, pt2.lon);
+        
+        // CSS 회전을 이용한 화살표 아이콘 생성
+        const arrowIcon = L.divIcon({
+          html: `<div style="transform: rotate(${angle}deg); color: #00f2fe; font-size: 12px; text-shadow: 0 0 4px #0f172a; opacity: 0.8;"><i class="fa-solid fa-chevron-up"></i></div>`,
+          className: 'direction-arrow',
+          iconSize: [16, 16],
+          iconAnchor: [8, 8]
+        });
+        
+        L.marker([pt1.lat, pt1.lon], { icon: arrowIcon }).addTo(arrowMarkersGroup);
+      }
+    }
+
+    // 2. 통계 계산 및 시각화 관련 변수
+    let activePoints = [];
+    let activeDistances = [];
+    let elevationChart = null;
+
+    // 위도/경도로 두 점 사이 거리 계산 (Haversine 공식, km 단위)
+    function haversine(lat1, lon1, lat2, lon2) {
+      const R = 6371; // 지구 반경 (km)
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    // 데이터 처리 및 시각화 핵심 함수
+    function processAndVisualize(points) {
+      if (!points || points.length === 0) return;
+      activePoints = points;
+      
+      // 애니메이션 재생 인덱스 초기화
+      stopPlayback();
+
+      // (1) 통계 계산
+      let totalDistance = 0;
+      let elevationGain = 0;
+      let minEle = points[0].ele;
+      let maxEle = points[0].ele;
+      activeDistances = [0]; // 각 포인트별 누적 거리 목록
+
+      for (let i = 1; i < points.length; i++) {
+        const prev = points[i-1];
+        const curr = points[i];
+        
+        // 거리 누적
+        const dist = haversine(prev.lat, prev.lon, curr.lat, curr.lon);
+        totalDistance += dist;
+        activeDistances.push(totalDistance);
+
+        // 고도 상승 계산
+        const eleDiff = curr.ele - prev.ele;
+        if (eleDiff > 0) {
+          elevationGain += eleDiff;
+        }
+
+        // 고도 최소/최대값 갱신
+        if (curr.ele < minEle) minEle = curr.ele;
+        if (curr.ele > maxEle) maxEle = curr.ele;
+      }
+
+      // 시간 계산
+      let durationStr = "N/A";
+      let avgSpeedStr = "0.0";
+      
+      const startTime = points[0].time ? new Date(points[0].time) : null;
+      const endTime = points[points.length - 1].time ? new Date(points[points.length - 1].time) : null;
+
+      if (startTime && endTime) {
+        const diffMs = endTime - startTime;
+        const diffSecs = Math.floor(diffMs / 1000);
+        const hours = Math.floor(diffSecs / 3600);
+        const minutes = Math.floor((diffSecs % 3600) / 60);
+        const seconds = diffSecs % 60;
+        
+        durationStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        
+        // 평균 속도 계산 (km/h)
+        const totalHours = diffSecs / 3600;
+        if (totalHours > 0) {
+          avgSpeedStr = (totalDistance / totalHours).toFixed(1);
+        }
+      }
+
+      // 화면에 통계값 설정
+      document.getElementById('statDistance').innerHTML = `${totalDistance.toFixed(2)}<span class="stat-unit">km</span>`;
+      document.getElementById('statDuration').innerHTML = `${durationStr}`;
+      document.getElementById('statAvgSpeed').innerHTML = `${avgSpeedStr}<span class="stat-unit">km/h</span>`;
+      document.getElementById('statElevationGain').innerHTML = `${Math.round(elevationGain)}<span class="stat-unit">m</span>`;
+      document.getElementById('statMinEle').innerText = `${Math.round(minEle)} m`;
+      document.getElementById('statMaxEle').innerText = `${Math.round(maxEle)} m`;
+      document.getElementById('statPoints').innerText = `${points.length.toLocaleString()} 개`;
+
+      // (2) 지도 위에 경로 그리기
+      const latlngs = points.map(pt => [pt.lat, pt.lon]);
+
+      // 기존 경로 및 마커 삭제
+      if (trackPath) map.removeLayer(trackPath);
+      if (trackShadowPath) map.removeLayer(trackShadowPath);
+      if (startMarker) map.removeLayer(startMarker);
+      if (endMarker) map.removeLayer(endMarker);
+      if (hoverMarker) map.removeLayer(hoverMarker);
+      hoverMarker = null;
+
+      // 네온 글로우 효과를 주기 위해 겹쳐서 선 그리기
+      trackShadowPath = L.polyline(latlngs, {
+        color: '#00f2fe',
+        weight: 9,
+        opacity: 0.25,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(map);
+
+      trackPath = L.polyline(latlngs, {
+        color: '#4facfe',
+        weight: 4,
+        opacity: 0.95,
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(map);
+
+      // 출발지/도착지 마커 생성
+      const startIcon = L.divIcon({ className: 'pulse-marker-start', iconSize: [14, 14] });
+      const endIcon = L.divIcon({ className: 'pulse-marker-end', iconSize: [14, 14] });
+
+      startMarker = L.marker(latlngs[0], { icon: startIcon })
+        .bindPopup("<b>🏁 출발점</b><br>출발 시간: " + (startTime ? startTime.toLocaleTimeString() : 'N/A'))
+        .addTo(map);
+
+      endMarker = L.marker(latlngs[latlngs.length - 1], { icon: endIcon })
+        .bindPopup("<b>🏆 도착점</b><br>도착 시간: " + (endTime ? endTime.toLocaleTimeString() : 'N/A'))
+        .addTo(map);
+
+      // 방향성 화살표 그리기
+      drawDirectionArrows(points);
+
+      // 경로에 맞게 지도 줌 맞추기
+      map.fitBounds(trackPath.getBounds(), { padding: [50, 50] });
+
+      // 첫 번째 포인트로 타겟 마커 초기화
+      updatePlaybackUI(0);
+
+      // (3) 고도 프로필 차트 그리기
+      drawElevationChart(points, activeDistances);
+    }
+
+    // 다운샘플링 함수 (Chart.js 로딩 성능 개선용)
+    function downsample(data, distances, maxPoints) {
+      if (data.length <= maxPoints) return { data, distances };
+      
+      const step = Math.ceil(data.length / maxPoints);
+      const sampledData = [];
+      const sampledDistances = [];
+      
+      for (let i = 0; i < data.length; i += step) {
+        sampledData.push(data[i]);
+        sampledDistances.push(distances[i]);
+      }
+      
+      // 마지막 값 추가 보장
+      if (sampledData[sampledData.length - 1] !== data[data.length - 1]) {
+        sampledData.push(data[data.length - 1]);
+        sampledDistances.push(distances[distances.length - 1]);
+      }
+      
+      return { data: sampledData, distances: sampledDistances };
+    }
+
+    // Chart.js 고도 프로필 그리기
+    function drawElevationChart(points, distances) {
+      // 대형 데이터 최적화를 위한 500개 샘플 추출
+      const { data: sampledPoints, distances: sampledDists } = downsample(points, distances, 500);
+
+      const labels = sampledDists.map(d => d.toFixed(2));
+      const elevations = sampledPoints.map(pt => Math.round(pt.ele));
+
+      if (elevationChart) {
+        elevationChart.destroy();
+      }
+
+      const ctx = document.getElementById('elevationChart').getContext('2d');
+      
+      // 그라데이션 컬러 배경 생성
+      const gradient = ctx.createLinearGradient(0, 0, 0, 150);
+      gradient.addColorStop(0, 'rgba(0, 242, 254, 0.4)');
+      gradient.addColorStop(1, 'rgba(79, 172, 254, 0.02)');
+
+      elevationChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: '고도 (m)',
+            data: elevations,
+            borderColor: '#00f2fe',
+            borderWidth: 2,
+            backgroundColor: gradient,
+            fill: true,
+            tension: 0.3,
+            pointRadius: 0,
+            pointHoverRadius: 6,
+            pointHoverBackgroundColor: '#ffd000',
+            pointHoverBorderColor: '#ffffff',
+            pointHoverBorderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              mode: 'index',
+              intersect: false,
+              callbacks: {
+                title: (context) => `누적 이동거리: ${context[0].label} km`,
+                label: (context) => `고도: ${context.parsed.y} m`
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(255, 255, 255, 0.03)' },
+              ticks: { 
+                color: '#94a3b8',
+                font: { family: 'Outfit' },
+                maxTicksLimit: 10,
+                callback: function(value, index, values) {
+                  return this.getLabelForValue(value) + ' km';
+                }
+              }
+            },
+            y: {
+              grid: { color: 'rgba(255, 255, 255, 0.03)' },
+              ticks: { 
+                color: '#94a3b8',
+                font: { family: 'Outfit' }
+              }
+            }
+          },
+          // 차트에 마우스 호버 및 클릭 시 지도와 동기화
+          onHover: (event, activeElements) => {
+            if (activeElements && activeElements.length > 0) {
+              const activeIndex = activeElements[0].index;
+              
+              // 샘플링 인덱스를 원본 인덱스로 매핑
+              const step = Math.ceil(points.length / 500);
+              const originalIndex = Math.min(activeIndex * step, points.length - 1);
+              
+              // 주행 일시정지 후 마커 싱크 처리
+              if (!isPlaying) {
+                playbackIndex = originalIndex;
+                updatePlaybackUI(originalIndex);
+              }
+            }
+          }
+        }
+      });
+    }
+
+    // 3. 주행 시뮬레이션 애니메이션 재생 로직
+    let isPlaying = false;
+    let playbackInterval = null;
+    let playbackIndex = 0;
+    let playbackSpeed = 50; // 기본 재생 속도 (한 틱에 넘어가는 포인트 수)
+
+    function togglePlay() {
+      if (activePoints.length === 0) return;
+      if (isPlaying) {
+        pausePlayback();
+      } else {
+        startPlayback();
+      }
+    }
+
+    function startPlayback() {
+      isPlaying = true;
+      document.getElementById('btnPlay').innerHTML = '<i class="fa-solid fa-pause"></i>';
+      
+      const intervalMs = 60; // 60ms 간격으로 애니메이션 프레임 업데이트
+      playbackInterval = setInterval(() => {
+        playbackIndex += playbackSpeed;
+        if (playbackIndex >= activePoints.length - 1) {
+          playbackIndex = activePoints.length - 1;
+          updatePlaybackUI(playbackIndex);
+          pausePlayback();
+        } else {
+          updatePlaybackUI(playbackIndex);
+        }
+      }, intervalMs);
+    }
+
+    function pausePlayback() {
+      isPlaying = false;
+      document.getElementById('btnPlay').innerHTML = '<i class="fa-solid fa-play"></i>';
+      if (playbackInterval) {
+        clearInterval(playbackInterval);
+      }
+    }
+
+    function stopPlayback() {
+      pausePlayback();
+      playbackIndex = 0;
+      updatePlaybackUI(0);
+    }
+
+    function changeSpeed(val) {
+      playbackSpeed = parseInt(val);
+    }
+
+    function seekPlayback(val) {
+      if (activePoints.length === 0) return;
+      pausePlayback();
+      
+      const index = Math.round((val / 100) * (activePoints.length - 1));
+      playbackIndex = index;
+      updatePlaybackUI(playbackIndex);
+    }
+
+    // 선택된 포인트 및 시뮬레이션 UI 갱신 함수
+    function updatePlaybackUI(index) {
+      const pt = activePoints[index];
+      if (!pt) return;
+
+      // 슬라이더 바 동기화
+      const slider = document.getElementById('playbackSlider');
+      const pct = Math.round((index / (activePoints.length - 1)) * 100);
+      slider.value = pct;
+      document.getElementById('playbackPercent').innerText = `${pct}%`;
+
+      // 지도 위 자전거 마커 갱신
+      const latlng = [pt.lat, pt.lon];
+      if (!hoverMarker) {
+        const hoverIcon = L.divIcon({ 
+          html: `<div class="pulse-marker-hover"><i class="fa-solid fa-bicycle"></i></div>`, 
+          className: '', 
+          iconSize: [18, 18],
+          iconAnchor: [9, 9]
+        });
+        hoverMarker = L.marker(latlng, { icon: hoverIcon }).addTo(map);
+      } else {
+        hoverMarker.setLatLng(latlng);
+      }
+
+      // 지도 자동 추적(Auto-Pan)
+      const autoPan = document.getElementById('chkAutoPan').checked;
+      if (autoPan) {
+        map.panTo(latlng);
+      }
+
+      // 실시간 통계 정보 카드 활성화 및 값 변경
+      document.getElementById('activePointSection').style.display = 'flex';
+      document.getElementById('apElevation').innerText = `${Math.round(pt.ele)} m`;
+      
+      // 현재 포인트 속도 계산
+      let currentSpeed = 0;
+      if (index > 0) {
+        const prev = activePoints[index - 1];
+        const dist = haversine(prev.lat, prev.lon, pt.lat, pt.lon);
+        if (prev.time && pt.time) {
+          const timeDiffHours = (new Date(pt.time) - new Date(prev.time)) / 3600000;
+          if (timeDiffHours > 0) {
+            currentSpeed = dist / timeDiffHours;
+          }
+        }
+      }
+      
+      // GPS 수신 에러로 튀는 비정상적인 속도(예: 80km/h 이상)는 보정
+      if (currentSpeed > 80 || currentSpeed < 0) currentSpeed = 0;
+      document.getElementById('apSpeed').innerText = `${currentSpeed.toFixed(1)} km/h`;
+
+      // 현재까지의 누적 거리 갱신
+      const cumDist = activeDistances[index] || 0;
+      document.getElementById('apDistance').innerText = `${cumDist.toFixed(2)} km`;
+
+      // 기록 시점 시각 갱신
+      const ptTime = pt.time ? new Date(pt.time) : null;
+      const timeStr = ptTime ? ptTime.toLocaleTimeString() : '시간 정보 없음';
+      document.getElementById('apTime').innerText = timeStr;
+
+      // 카카오 로드뷰 바로가기 URL 생성
+      document.getElementById('btnKakaoRoad').href = `https://map.kakao.com/link/roadview/${pt.lat},${pt.lon}`;
+
+      // 현재 선택 좌표 저장 (카카오 로드뷰 동기화용)
+      currentLat = pt.lat;
+      currentLon = pt.lon;
+
+      // 로드뷰 패널이 열려 있으면 로드뷰도 해당 지점으로 이동 (지도→로드뷰 방향)
+      syncRoadviewToPoint(pt.lat, pt.lon);
+
+      // 차트의 액티브 세로선 하이라이트 동기화
+      if (elevationChart) {
+        const step = Math.ceil(activePoints.length / 500);
+        const chartIndex = Math.min(Math.floor(index / step), elevationChart.data.labels.length - 1);
+        
+        // 차트 포인트 및 툴팁 팝업 활성화
+        elevationChart.setActiveElements([{
+          datasetIndex: 0,
+          index: chartIndex
+        }]);
+        elevationChart.tooltip.setActiveElements([{
+          datasetIndex: 0,
+          index: chartIndex
+        }], { x: 0, y: 0 });
+        
+        elevationChart.update();
+      }
+    }
+
+    // 4. 새 파일 입력 처리 및 GPX 파싱
+    function handleGpxFile(file) {
+      if (!file) return;
+
+      document.getElementById('fileName').innerText = `${file.name}`;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const gpxText = e.target.result;
+        
+        try {
+          const parser = new DOMParser();
+          const xmlDoc = parser.parseFromString(gpxText, "text/xml");
+          
+          // XML 에러 체크
+          const parserError = xmlDoc.getElementsByTagName("parsererror");
+          if (parserError.length > 0) {
+            alert("올바르지 않은 GPX 형식의 파일입니다. 확인 후 다시 시도해 주세요.");
+            return;
+          }
+
+          const trkpts = xmlDoc.getElementsByTagName("trkpt");
+          if (trkpts.length === 0) {
+            alert("GPX 파일 내에 유효한 트랙포인트(trkpt)가 존재하지 않습니다.");
+            return;
+          }
+
+          const newPoints = [];
+          for (let i = 0; i < trkpts.length; i++) {
+            const pt = trkpts[i];
+            const lat = parseFloat(pt.getAttribute("lat"));
+            const lon = parseFloat(pt.getAttribute("lon"));
+            
+            const eleEl = pt.getElementsByTagName("ele")[0];
+            const ele = eleEl ? parseFloat(eleEl.textContent) : 0.0;
+            
+            const timeEl = pt.getElementsByTagName("time")[0];
+            const time = timeEl ? timeEl.textContent : "";
+
+            newPoints.push({ lat, lon, ele, time });
+          }
+
+          processAndVisualize(newPoints);
+        } catch (err) {
+          console.error(err);
+          alert("파일을 파싱하는 동안 오류가 발생했습니다: " + err.message);
+        }
+      };
+      
+      reader.readAsText(file);
+    }
+
+    // 드래그 앤 드롭 및 파일 업로드 리스너
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('fileInput');
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        handleGpxFile(e.target.files[0]);
+      }
+    });
+
+    dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.style.borderColor = 'var(--primary-color)';
+      dropzone.style.background = 'rgba(0, 242, 254, 0.08)';
+    });
+
+    dropzone.addEventListener('dragleave', () => {
+      dropzone.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+      dropzone.style.background = 'rgba(255, 255, 255, 0.02)';
+    });
+
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+      dropzone.style.background = 'rgba(255, 255, 255, 0.02)';
+      
+      if (e.dataTransfer.files.length > 0) {
+        handleGpxFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    // 5. 앱 시작 시 실행
+    window.onload = () => {
+      initMap();
+      
+      // 로컬에 내장된 points.js 파일 데이터(defaultGpxPoints)가 있는 경우 자동 렌더링
+      if (typeof defaultGpxPoints !== 'undefined' && defaultGpxPoints.length > 0) {
+        processAndVisualize(defaultGpxPoints);
+      } else {
+        console.warn("기본 경로 데이터가 없습니다. 새로운 GPX 파일을 수동으로 로드해 주세요.");
+      }
+    };
+
+    // 6. 선택된 좌표 (카카오 로드뷰 동기화용)
+    let currentLat = null;
+    let currentLon = null;
+
+    // ESC 키로 로드뷰 패널 닫기
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeKakaoRoadview();
+    });
+
+    // ============ 7. 카카오 로드뷰 내장 + 실시간 동기화 ============
+    let kakaoRoadview = null;
+    let kakaoRoadviewClient = null;
+    let isSyncingFromRoadview = false; // 로드뷰→지도 동기화 중 플래그 (피드백 루프 방지)
+    let lastRoadviewSync = 0;          // 재생 중 로드뷰 갱신 throttle용 타임스탬프
+
+    // 카카오 버튼 클릭: JS 키가 있으면 내장 패널, 없으면 외부 링크(새 탭)로 폴백
+    function openKakaoRoadview(e) {
+      // 키/SDK 미설정 시 → 기본 동작(href 새 탭 열기)으로 폴백
+      if (!KAKAO_JS_KEY || !window.kakaoMapsLoaded || typeof kakao === 'undefined') {
+        return true;
+      }
+      if (e) e.preventDefault();
+
+      if (currentLat === null || currentLon === null) {
+        alert('먼저 재생 버튼을 누르거나 경로 위를 클릭하여 지점을 선택해주세요!');
+        return false;
+      }
+
+      document.body.classList.add('roadview-open');
+      document.getElementById('roadviewPanel').classList.add('active');
+      initKakaoRoadview(currentLat, currentLon);
+      setTimeout(() => { if (map) map.invalidateSize(); if (kakaoRoadview) kakaoRoadview.relayout(); }, 350);
+      return false;
+    }
+
+    function initKakaoRoadview(lat, lon) {
+      const container = document.getElementById('roadviewContainer');
+
+      if (!kakaoRoadview) {
+        kakaoRoadview = new kakao.maps.Roadview(container);
+        kakaoRoadviewClient = new kakao.maps.RoadviewClient();
+
+        // 로드뷰에서 도로를 따라 이동할 때마다 → 지도/그래프 동기화
+        kakao.maps.event.addListener(kakaoRoadview, 'position_changed', () => {
+          const pos = kakaoRoadview.getPosition();
+          syncFromRoadview(pos.getLat(), pos.getLng());
+        });
+      }
+
+      setRoadviewPosition(lat, lon);
+    }
+
+    // 좌표 → 가장 가까운 파노라마로 로드뷰 이동
+    function setRoadviewPosition(lat, lon) {
+      if (!kakaoRoadviewClient) return;
+      const pos = new kakao.maps.LatLng(lat, lon);
+      kakaoRoadviewClient.getNearestPanoId(pos, 50, (panoId) => {
+        const coordsEl = document.getElementById('roadviewCoords');
+        if (panoId === null) {
+          if (coordsEl) coordsEl.textContent = '이 지점 근처에는 카카오 로드뷰 데이터가 없습니다.';
+          return;
+        }
+        kakaoRoadview.setPanoId(panoId, pos);
+      });
+    }
+
+    // 로드뷰 → 지도/그래프 (사용자가 로드뷰 안에서 이동했을 때)
+    function syncFromRoadview(lat, lon) {
+      if (activePoints.length === 0) return;
+
+      // 재생 중에는 지도가 로드뷰를 주도하므로 로드뷰의 위치 변경 이벤트는 무시한다.
+      // (그렇지 않으면 자동 이동이 pausePlayback을 호출해 재생이 멈춰버림)
+      if (isPlaying) return;
+
+      // 현재 로드뷰 위치에서 가장 가까운 GPX 포인트 찾기
+      let minDist = Infinity, closest = 0;
+      for (let i = 0; i < activePoints.length; i++) {
+        const d = haversine(lat, lon, activePoints[i].lat, activePoints[i].lon);
+        if (d < minDist) { minDist = d; closest = i; }
+      }
+
+      const coordsEl = document.getElementById('roadviewCoords');
+      if (coordsEl) coordsEl.textContent = `위도 ${lat.toFixed(6)}, 경도 ${lon.toFixed(6)} · 경로까지 ${(minDist * 1000).toFixed(0)}m`;
+
+      // 경로에서 100m 넘게 벗어나면(딴 길로 이동) 마커 점프 방지를 위해 인덱스 갱신 생략
+      if (minDist > 0.1) return;
+
+      isSyncingFromRoadview = true; // updatePlaybackUI가 로드뷰를 되밀지 않도록
+      pausePlayback();
+      playbackIndex = closest;
+      updatePlaybackUI(closest);
+      isSyncingFromRoadview = false;
+    }
+
+    // 지도/그래프 → 로드뷰 (지점 선택 시 로드뷰도 이동). 패널이 열려 있을 때만 동작.
+    function syncRoadviewToPoint(lat, lon) {
+      if (isSyncingFromRoadview) return; // 로드뷰에서 온 갱신이면 되돌리지 않음
+      const panel = document.getElementById('roadviewPanel');
+      if (!panel || !panel.classList.contains('active') || !kakaoRoadview) return;
+      // 재생 중에는 카카오 API 과다 호출/버벅임 방지를 위해 약 0.8초 간격으로 throttle
+      if (isPlaying) {
+        const now = Date.now();
+        if (now - lastRoadviewSync < 800) return;
+        lastRoadviewSync = now;
+      }
+      setRoadviewPosition(lat, lon);
+    }
+
+    function closeKakaoRoadview() {
+      document.body.classList.remove('roadview-open');
+      document.getElementById('roadviewPanel').classList.remove('active');
+      setTimeout(() => { if (map) map.invalidateSize(); }, 350);
+    }
+
+    // ===== 지도/로드뷰 경계선 드래그로 크기 조절 =====
+    (function initRoadviewResizer() {
+      const resizer = document.getElementById('roadviewResizer');
+      if (!resizer) return;
+      let dragging = false;
+      let rafPending = false;
+
+      function liveRelayout() {
+        if (rafPending) return;
+        rafPending = true;
+        requestAnimationFrame(() => {
+          rafPending = false;
+          if (map) map.invalidateSize();
+          if (kakaoRoadview) kakaoRoadview.relayout();
+        });
+      }
+
+      function onMove(clientX) {
+        // 오른쪽(로드뷰) 너비 비율 = 화면 오른쪽 끝에서 커서까지의 거리
+        let w = (window.innerWidth - clientX) / window.innerWidth * 100;
+        w = Math.max(25, Math.min(75, w)); // 25%~75%로 제한
+        document.body.style.setProperty('--rv-width', w + '%');
+        liveRelayout();
+      }
+
+      function start(e) {
+        dragging = true;
+        document.body.classList.add('rv-resizing');
+        e.preventDefault();
+      }
+      function end() {
+        if (!dragging) return;
+        dragging = false;
+        document.body.classList.remove('rv-resizing');
+        if (map) map.invalidateSize();
+        if (kakaoRoadview) kakaoRoadview.relayout();
+      }
+
+      resizer.addEventListener('mousedown', start);
+      window.addEventListener('mousemove', (e) => { if (dragging) onMove(e.clientX); });
+      window.addEventListener('mouseup', end);
+
+      // 터치 지원
+      resizer.addEventListener('touchstart', (e) => start(e), { passive: false });
+      window.addEventListener('touchmove', (e) => { if (dragging && e.touches[0]) { e.preventDefault(); onMove(e.touches[0].clientX); } }, { passive: false });
+      window.addEventListener('touchend', end);
+    })();
+  </script>
+</body>
+</html>
