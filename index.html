@@ -486,14 +486,6 @@
       background: #ebd200;
       box-shadow: 0 4px 10px rgba(254, 229, 0, 0.2);
     }
-    .sv-navi {
-      background: #2272eb;
-      color: white;
-    }
-    .sv-navi:hover {
-      background: #1a5fcc;
-      box-shadow: 0 4px 10px rgba(34, 114, 235, 0.25);
-    }
     .btn-download {
       display: flex;
       align-items: center;
@@ -1019,7 +1011,6 @@
       </div>
       <div class="streetview-buttons">
         <a id="btnKakaoRoad" class="btn-sv sv-kakao" target="_blank" onclick="return openKakaoRoadview(event)"><i class="fa-solid fa-map"></i> 카카오 로드뷰 보기</a>
-        <a id="btnKakaoNavi" class="btn-sv sv-navi" href="#" onclick="startKakaoNavi(); return false;"><i class="fa-solid fa-route"></i> 카카오내비로 안내</a>
       </div>
     </div>
 
@@ -1103,14 +1094,6 @@
         });
       };
       document.head.appendChild(kakaoScript);
-
-      // 카카오 JavaScript SDK (길안내/내비용)
-      const kakaoJsSdk = document.createElement('script');
-      kakaoJsSdk.src = 'https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js';
-      kakaoJsSdk.onload = () => {
-        if (window.Kakao && !Kakao.isInitialized()) Kakao.init(KAKAO_JS_KEY);
-      };
-      document.head.appendChild(kakaoJsSdk);
     }
   </script>
 
@@ -1848,28 +1831,6 @@
       document.body.classList.remove('roadview-open');
       document.getElementById('roadviewPanel').classList.remove('active');
       setTimeout(() => { if (map) map.invalidateSize(); }, 350);
-    }
-
-    // 카카오내비로 현재 선택 지점까지 길안내 (모바일에서 카카오내비 앱 실행)
-    function startKakaoNavi() {
-      if (currentLat === null || currentLon === null) {
-        alert('먼저 재생 버튼을 누르거나 경로 위를 클릭하여 지점을 선택해주세요!');
-        return;
-      }
-      if (typeof Kakao === 'undefined' || !Kakao.Navi) {
-        alert('카카오내비 길안내는 카카오내비 앱이 설치된 모바일에서 이용할 수 있어요.');
-        return;
-      }
-      try {
-        Kakao.Navi.start({
-          name: 'GPX 경로 지점',
-          x: currentLon,
-          y: currentLat,
-          coordType: 'wgs84'
-        });
-      } catch (e) {
-        alert('카카오내비를 실행할 수 없습니다. 모바일에서 다시 시도해주세요.');
-      }
     }
 
     // 현재 로드된 경로를 GPX 파일로 다운로드 (GPX 내비 앱 등으로 활용)
