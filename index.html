@@ -508,6 +508,13 @@
       border-color: var(--primary-color);
       color: var(--primary-color);
     }
+    .download-hint {
+      font-size: 11px;
+      color: var(--text-sub);
+      text-align: center;
+      line-height: 1.5;
+      margin-top: 6px;
+    }
 
     /* 고도 관련 미니 통계 */
     .elevation-stats {
@@ -927,6 +934,7 @@
       <div class="file-type">GPX</div>
     </div>
     <button id="btnDownloadGpx" class="btn-download" onclick="downloadGPX()"><i class="fa-solid fa-download"></i> GPX 다운로드</button>
+    <p class="download-hint">실시간 카카오 네비로 길 안내를 원하시면 클릭 후 카카오맵으로 열어주세요</p>
 
     <!-- 라이딩/하이킹 전체 통계 -->
     <div class="stats-grid">
