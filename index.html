@@ -494,6 +494,28 @@
       background: #1a5fcc;
       box-shadow: 0 4px 10px rgba(34, 114, 235, 0.25);
     }
+    .btn-download {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 11px;
+      margin-top: 6px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-main);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .btn-download:hover {
+      background: rgba(0, 242, 254, 0.12);
+      border-color: var(--primary-color);
+      color: var(--primary-color);
+    }
 
     /* 고도 관련 미니 통계 */
     .elevation-stats {
@@ -863,6 +885,20 @@
       body.roadview-open #roadviewResizer {
         display: none;
       }
+      /* 모바일 터치 타깃 확대 */
+      .btn-sv {
+        padding: 13px 14px;
+        font-size: 14px;
+      }
+      .btn-control {
+        width: 46px;
+        height: 46px;
+        font-size: 16px;
+      }
+      #speedSelect {
+        padding: 7px 8px;
+        font-size: 14px;
+      }
     }
   </style>
 </head>
@@ -898,6 +934,7 @@
       <div class="file-name" id="fileName">샘플 경로</div>
       <div class="file-type">GPX</div>
     </div>
+    <button id="btnDownloadGpx" class="btn-download" onclick="downloadGPX()"><i class="fa-solid fa-download"></i> GPX 다운로드</button>
 
     <!-- 라이딩/하이킹 전체 통계 -->
     <div class="stats-grid">
@@ -1833,6 +1870,38 @@
       } catch (e) {
         alert('카카오내비를 실행할 수 없습니다. 모바일에서 다시 시도해주세요.');
       }
+    }
+
+    // 현재 로드된 경로를 GPX 파일로 다운로드 (GPX 내비 앱 등으로 활용)
+    function downloadGPX() {
+      if (!activePoints || activePoints.length === 0) {
+        alert('내보낼 경로 데이터가 없습니다. GPX 파일을 먼저 불러와 주세요.');
+        return;
+      }
+      const header = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+        '<gpx version="1.1" creator="GPX 지도 뷰어" xmlns="http://www.topografix.com/GPX/1/1">\n' +
+        '  <trk>\n    <name>GPX Route</name>\n    <trkseg>\n';
+      const body = activePoints.map(function (p) {
+        const ele = (p.ele !== undefined && p.ele !== null) ? '<ele>' + p.ele + '</ele>' : '';
+        const time = p.time ? '<time>' + p.time + '</time>' : '';
+        return '      <trkpt lat="' + p.lat + '" lon="' + p.lon + '">' + ele + time + '</trkpt>';
+      }).join('\n');
+      const footer = '\n    </trkseg>\n  </trk>\n</gpx>\n';
+      const gpx = header + body + footer;
+
+      const blob = new Blob([gpx], { type: 'application/gpx+xml' });
+      const url = URL.createObjectURL(blob);
+      let fname = (document.getElementById('fileName').innerText || 'route').trim();
+      fname = fname.replace(/[\\\/:*?"<>|]+/g, '_').replace(/\s+/g, '_');
+      if (!/\.gpx$/i.test(fname)) fname += '.gpx';
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fname;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
     }
 
     // ===== 지도/로드뷰 경계선 드래그로 크기 조절 =====
