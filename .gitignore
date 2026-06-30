@@ -12,3 +12,6 @@ Thumbs.db
 # bkit 로컬 상태 파일
 docs/.pdca-status.json
 docs/.bkit-memory.json
+
+# 코스 원본 GPX (큐레이션 소스 — 빌드 시 courses/*.json 으로 생성됨)
+courses_src/

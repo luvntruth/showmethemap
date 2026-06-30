@@ -1,0 +1,14 @@
+{
+  "courses": [
+    {
+      "id": "sample",
+      "name": "수도권 장거리 코스 (샘플)",
+      "region": "수도권",
+      "distance": 139.5,
+      "elevationGain": 1253,
+      "difficulty": "고급",
+      "points": "courses/sample.json",
+      "numPoints": 800
+    }
+  ]
+}
