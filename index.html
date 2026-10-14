@@ -920,6 +920,14 @@
     }
 
     /* Leaflet 컨트롤 버튼 커스텀 스타일 */
+    .map-tiles-dark {
+      filter: invert(1) hue-rotate(180deg) brightness(0.85) saturate(0.65);
+    }
+
+    .map-tiles-light {
+      filter: saturate(0.45) brightness(1.05);
+    }
+
     .leaflet-control-zoom {
       border: 1px solid var(--border-color) !important;
       box-shadow: none !important;
@@ -1308,22 +1316,23 @@
     let currentMapTile = null;
     let arrowMarkersGroup = null;
 
-    // 지도 타일 레이어 정의
+    // API 키가 필요 없는 OSM 타일을 사용하고 배경 타일에만 테마를 적용한다.
+    const baseTileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+    const baseTileOptions = {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxNativeZoom: 19,
+      maxZoom: 20
+    };
     const tileLayers = {
-      dark: L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: 'abcd',
-        maxZoom: 20
+      dark: L.tileLayer(baseTileUrl, {
+        ...baseTileOptions,
+        className: 'map-tiles-dark'
       }),
-      light: L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: 'abcd',
-        maxZoom: 20
+      light: L.tileLayer(baseTileUrl, {
+        ...baseTileOptions,
+        className: 'map-tiles-light'
       }),
-      osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        maxZoom: 19
-      })
+      osm: L.tileLayer(baseTileUrl, baseTileOptions)
     };
 
     // 지도 로딩
@@ -1333,8 +1342,8 @@
         attributionControl: true
       }).setView([37.5665, 126.9780], 13); // 서울 시청 기준 기본 좌표
       
-      // 기본 테마: 다크 모드
-      changeMapStyle('dark');
+      // 기본 테마: 일반 지도
+      changeMapStyle('osm');
       
       // 지도를 클릭했을 때 가까운 포인트를 찾아주는 기능 추가
       map.on('click', function(e) {
