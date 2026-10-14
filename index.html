@@ -1129,6 +1129,7 @@
       for (let i = 0; i < points.length - 1; i += interval) {
         const pt1 = points[i];
         const pt2 = points[i + 1];
+        if (pt2.segmentStart) continue;
         
         // 두 지점 간의 진행 방향 각도 계산
         const angle = getBearing(pt1.lat, pt1.lon, pt2.lat, pt2.lon);
@@ -1166,16 +1167,20 @@
     // 데이터 처리 및 시각화 핵심 함수
     function processAndVisualize(points) {
       if (!points || points.length === 0) return;
+      pausePlayback();
+      playbackIndex = 0;
       activePoints = points;
-      
-      // 애니메이션 재생 인덱스 초기화
-      stopPlayback();
 
       // (1) 통계 계산
       let totalDistance = 0;
       let elevationGain = 0;
-      let minEle = points[0].ele;
-      let maxEle = points[0].ele;
+      const elevations = points.map(p => p.ele).filter(Number.isFinite);
+      let minEle = elevations.length ? Infinity : null;
+      let maxEle = elevations.length ? -Infinity : null;
+      for (const ele of elevations) {
+        minEle = Math.min(minEle, ele);
+        maxEle = Math.max(maxEle, ele);
+      }
       activeDistances = [0]; // 각 포인트별 누적 거리 목록
 
       for (let i = 1; i < points.length; i++) {
@@ -1183,29 +1188,26 @@
         const curr = points[i];
         
         // 거리 누적
-        const dist = haversine(prev.lat, prev.lon, curr.lat, curr.lon);
+        const dist = curr.segmentStart ? 0 : haversine(prev.lat, prev.lon, curr.lat, curr.lon);
         totalDistance += dist;
         activeDistances.push(totalDistance);
 
         // 고도 상승 계산
         const eleDiff = curr.ele - prev.ele;
-        if (eleDiff > 0) {
+        if (!curr.segmentStart && Number.isFinite(curr.ele) && Number.isFinite(prev.ele) && eleDiff > 0) {
           elevationGain += eleDiff;
         }
 
-        // 고도 최소/최대값 갱신
-        if (curr.ele < minEle) minEle = curr.ele;
-        if (curr.ele > maxEle) maxEle = curr.ele;
       }
 
       // 시간 계산
       let durationStr = "N/A";
-      let avgSpeedStr = "0.0";
+      let avgSpeedStr = "N/A";
       
       const startTime = points[0].time ? new Date(points[0].time) : null;
       const endTime = points[points.length - 1].time ? new Date(points[points.length - 1].time) : null;
 
-      if (startTime && endTime) {
+      if (startTime && endTime && Number.isFinite(+startTime) && Number.isFinite(+endTime) && endTime > startTime) {
         const diffMs = endTime - startTime;
         const diffSecs = Math.floor(diffMs / 1000);
         const hours = Math.floor(diffSecs / 3600);
@@ -1225,13 +1227,18 @@
       document.getElementById('statDistance').innerHTML = `${totalDistance.toFixed(2)}<span class="stat-unit">km</span>`;
       document.getElementById('statDuration').innerHTML = `${durationStr}`;
       document.getElementById('statAvgSpeed').innerHTML = `${avgSpeedStr}<span class="stat-unit">km/h</span>`;
-      document.getElementById('statElevationGain').innerHTML = `${Math.round(elevationGain)}<span class="stat-unit">m</span>`;
-      document.getElementById('statMinEle').innerText = `${Math.round(minEle)} m`;
-      document.getElementById('statMaxEle').innerText = `${Math.round(maxEle)} m`;
+      document.getElementById('statElevationGain').innerHTML = `${elevations.length === points.length ? Math.round(elevationGain) : "N/A"}<span class="stat-unit">m</span>`;
+      document.getElementById('statMinEle').innerText = `${minEle === null ? "N/A" : Math.round(minEle)} m`;
+      document.getElementById('statMaxEle').innerText = `${maxEle === null ? "N/A" : Math.round(maxEle)} m`;
       document.getElementById('statPoints').innerText = `${points.length.toLocaleString()} 개`;
 
       // (2) 지도 위에 경로 그리기
       const latlngs = points.map(pt => [pt.lat, pt.lon]);
+      const segments = [];
+      points.forEach((pt, i) => {
+        if (i === 0 || pt.segmentStart) segments.push([]);
+        segments[segments.length - 1].push(latlngs[i]);
+      });
 
       // 기존 경로 및 마커 삭제
       if (trackPath) map.removeLayer(trackPath);
@@ -1242,7 +1249,7 @@
       hoverMarker = null;
 
       // 네온 글로우 효과를 주기 위해 겹쳐서 선 그리기
-      trackShadowPath = L.polyline(latlngs, {
+      trackShadowPath = L.polyline(segments, {
         color: '#00f2fe',
         weight: 9,
         opacity: 0.25,
@@ -1250,7 +1257,7 @@
         lineJoin: 'round'
       }).addTo(map);
 
-      trackPath = L.polyline(latlngs, {
+      trackPath = L.polyline(segments, {
         color: '#4facfe',
         weight: 4,
         opacity: 0.95,
@@ -1311,7 +1318,7 @@
       const { data: sampledPoints, distances: sampledDists } = downsample(points, distances, 500);
 
       const labels = sampledDists.map(d => d.toFixed(2));
-      const elevations = sampledPoints.map(pt => Math.round(pt.ele));
+      const elevations = sampledPoints.map(pt => Number.isFinite(pt.ele) ? Math.round(pt.ele) : null);
 
       if (elevationChart) {
         elevationChart.destroy();
@@ -1464,7 +1471,7 @@
 
       // 슬라이더 바 동기화
       const slider = document.getElementById('playbackSlider');
-      const pct = Math.round((index / (activePoints.length - 1)) * 100);
+      const pct = activePoints.length > 1 ? Math.round((index / (activePoints.length - 1)) * 100) : 0;
       slider.value = pct;
       document.getElementById('playbackPercent').innerText = `${pct}%`;
 
@@ -1490,11 +1497,11 @@
 
       // 실시간 통계 정보 카드 활성화 및 값 변경
       document.getElementById('activePointSection').style.display = 'flex';
-      document.getElementById('apElevation').innerText = `${Math.round(pt.ele)} m`;
+      document.getElementById('apElevation').innerText = `${Number.isFinite(pt.ele) ? Math.round(pt.ele) : "N/A"} m`;
       
       // 현재 포인트 속도 계산
       let currentSpeed = 0;
-      if (index > 0) {
+      if (index > 0 && !pt.segmentStart) {
         const prev = activePoints[index - 1];
         const dist = haversine(prev.lat, prev.lon, pt.lat, pt.lon);
         if (prev.time && pt.time) {
@@ -1544,55 +1551,56 @@
       }
     }
 
-    // 4. 새 파일 입력 처리 및 GPX 파싱
+    // 4. 트랙/경로 GPX를 네임스페이스와 관계없이 읽는다.
+    function parseGpx(gpxText) {
+      const xml = new DOMParser().parseFromString(gpxText, 'application/xml');
+      if (xml.getElementsByTagName('parsererror').length || xml.documentElement.localName !== 'gpx') {
+        throw new Error('올바른 GPX 파일이 아닙니다.');
+      }
+      const elements = name => Array.from(xml.getElementsByTagNameNS('*', name));
+      const tracks = elements('trkseg');
+      const groups = tracks.length ? tracks : elements('rte');
+      const tag = tracks.length ? 'trkpt' : 'rtept';
+      const points = [];
+      for (const group of groups) {
+        const nodes = Array.from(group.children).filter(el => el.localName === tag);
+        nodes.forEach((node, index) => {
+          const text = name => Array.from(node.children).find(el => el.localName === name)?.textContent.trim() || '';
+          const lat = Number(node.getAttribute('lat'));
+          const lon = Number(node.getAttribute('lon'));
+          if (!node.getAttribute('lat')?.trim() || !node.getAttribute('lon')?.trim() || !Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+            throw new Error('유효하지 않은 좌표가 포함되어 있습니다.');
+          }
+          const eleText = text('ele');
+          const ele = eleText && Number.isFinite(Number(eleText)) ? Number(eleText) : null;
+          const rawTime = text('time');
+          const time = rawTime && Number.isFinite(Date.parse(rawTime)) ? rawTime : '';
+          points.push({ lat, lon, ele, time, segmentStart: index === 0 });
+        });
+      }
+      if (!points.length) throw new Error('GPX에 트랙(trkpt) 또는 경로(rtept) 좌표가 없습니다.');
+      return points;
+    }
+
+    let gpxLoadRequest = 0;
     function handleGpxFile(file) {
       if (!file) return;
-
-      document.getElementById('fileName').innerText = `${file.name}`;
-
+      const request = ++gpxLoadRequest;
       const reader = new FileReader();
       reader.onload = function(e) {
-        const gpxText = e.target.result;
-        
+        if (request !== gpxLoadRequest) return;
         try {
-          const parser = new DOMParser();
-          const xmlDoc = parser.parseFromString(gpxText, "text/xml");
-          
-          // XML 에러 체크
-          const parserError = xmlDoc.getElementsByTagName("parsererror");
-          if (parserError.length > 0) {
-            alert("올바르지 않은 GPX 형식의 파일입니다. 확인 후 다시 시도해 주세요.");
-            return;
-          }
-
-          const trkpts = xmlDoc.getElementsByTagName("trkpt");
-          if (trkpts.length === 0) {
-            alert("GPX 파일 내에 유효한 트랙포인트(trkpt)가 존재하지 않습니다.");
-            return;
-          }
-
-          const newPoints = [];
-          for (let i = 0; i < trkpts.length; i++) {
-            const pt = trkpts[i];
-            const lat = parseFloat(pt.getAttribute("lat"));
-            const lon = parseFloat(pt.getAttribute("lon"));
-            
-            const eleEl = pt.getElementsByTagName("ele")[0];
-            const ele = eleEl ? parseFloat(eleEl.textContent) : 0.0;
-            
-            const timeEl = pt.getElementsByTagName("time")[0];
-            const time = timeEl ? timeEl.textContent : "";
-
-            newPoints.push({ lat, lon, ele, time });
-          }
-
+          const newPoints = parseGpx(e.target.result);
           processAndVisualize(newPoints);
+          document.getElementById('fileName').innerText = file.name;
         } catch (err) {
           console.error(err);
-          alert("파일을 파싱하는 동안 오류가 발생했습니다: " + err.message);
+          alert('새 GPX를 불러오지 못했습니다. 현재 표시된 파일과 통계를 유지합니다.\n' + err.message);
         }
       };
-      
+      reader.onerror = () => {
+        if (request === gpxLoadRequest) alert('파일을 읽지 못했습니다. 현재 표시된 파일과 통계를 유지합니다.');
+      };
       reader.readAsText(file);
     }
 
@@ -1603,6 +1611,7 @@
     fileInput.addEventListener('change', (e) => {
       if (e.target.files.length > 0) {
         handleGpxFile(e.target.files[0]);
+        e.target.value = "";
       }
     });
 
