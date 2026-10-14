@@ -1157,6 +1157,7 @@
             <option value="1.5">1.5배속</option>
             <option value="2">2배속</option>
             <option value="4">4배속</option>
+            <option value="10">10배속</option>
           </select>
         </div>
       </div>
@@ -1198,7 +1199,7 @@
         </div>
       </div>
       <div class="streetview-buttons">
-        <a id="btnKakaoRoad" class="btn-sv sv-kakao" target="_blank" onclick="return openKakaoRoadview(event)"><i class="fa-solid fa-map"></i> 카카오 로드뷰 보기</a>
+        <button type="button" id="btnKakaoRoad" class="btn-sv sv-kakao" onclick="openKakaoRoadview(event)"><i class="fa-solid fa-map"></i> 카카오 로드뷰 보기</button>
       </div>
     </div>
 
@@ -1236,7 +1237,7 @@
         <i class="fa-solid fa-chart-area"></i>
         <span>고도 프로필 그래프</span>
       </div>
-      <div class="chart-hint">그래프에 마우스를 올리거나 클릭하면 지도에 위치와 함께 로드뷰 연동 링크가 생성됩니다.</div>
+      <div class="chart-hint">그래프에서 지점을 선택하면 지도와 오른쪽 로드뷰가 함께 이동합니다.</div>
     </div>
     <div class="chart-container">
       <canvas id="elevationChart"></canvas>
@@ -1291,16 +1292,46 @@
 
   <!-- 카카오 Maps SDK: JavaScript 키가 있을 경우에만 동적으로 로드 (로드뷰 실시간 동기화용) -->
   <script>
-    if (KAKAO_JS_KEY) {
-      const kakaoScript = document.createElement('script');
-      kakaoScript.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_JS_KEY}&autoload=false`;
-      kakaoScript.onload = () => {
-        kakao.maps.load(() => {
-          window.kakaoMapsLoaded = true;
-          console.log('카카오 지도 SDK 로드 완료!');
-        });
-      };
-      document.head.appendChild(kakaoScript);
+    let kakaoMapsPromise = null;
+    function loadKakaoMaps() {
+      if (window.kakaoMapsLoaded) return Promise.resolve();
+      if (kakaoMapsPromise) return kakaoMapsPromise;
+      kakaoMapsPromise = new Promise((resolve, reject) => {
+        if (!KAKAO_JS_KEY) {
+          reject(new Error('카카오 JavaScript 키가 설정되지 않았습니다.'));
+          return;
+        }
+        const script = document.createElement('script');
+        let settled = false;
+        const finish = (error) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          if (error) {
+            script.remove();
+            reject(error);
+          } else {
+            window.kakaoMapsLoaded = true;
+            resolve();
+          }
+        };
+        const timeout = setTimeout(() => finish(new Error('로드뷰 연결 시간이 초과되었습니다.')), 15000);
+        script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_JS_KEY}&autoload=false`;
+        script.onerror = () => finish(new Error('카카오 로드뷰를 불러오지 못했습니다.'));
+        script.onload = () => {
+          if (settled) return;
+          try {
+            kakao.maps.load(() => finish());
+          } catch (error) {
+            finish(error);
+          }
+        };
+        document.head.appendChild(script);
+      }).catch(error => {
+        kakaoMapsPromise = null;
+        throw error;
+      });
+      return kakaoMapsPromise;
     }
   </script>
 
@@ -1804,9 +1835,6 @@
       const timeStr = ptTime ? ptTime.toLocaleTimeString() : '시간 정보 없음';
       document.getElementById('apTime').innerText = timeStr;
 
-      // 카카오 로드뷰 바로가기 URL 생성
-      document.getElementById('btnKakaoRoad').href = `https://map.kakao.com/link/roadview/${pt.lat},${pt.lon}`;
-
       // 현재 선택 좌표 저장 (카카오 로드뷰 동기화용)
       currentLat = pt.lat;
       currentLon = pt.lon;
@@ -1942,13 +1970,11 @@
     let kakaoRoadviewClient = null;
     let isSyncingFromRoadview = false; // 로드뷰→지도 동기화 중 플래그 (피드백 루프 방지)
     let lastRoadviewSync = 0;          // 재생 중 로드뷰 갱신 throttle용 타임스탬프
+    let roadviewOpenRequest = 0;
+    let roadviewPositionRequest = 0;
 
-    // 카카오 버튼 클릭: JS 키가 있으면 내장 패널, 없으면 외부 링크(새 탭)로 폴백
-    function openKakaoRoadview(e) {
-      // 키/SDK 미설정 시 → 기본 동작(href 새 탭 열기)으로 폴백
-      if (!KAKAO_JS_KEY || !window.kakaoMapsLoaded || typeof kakao === 'undefined') {
-        return true;
-      }
+    // 패널을 먼저 열고 SDK 준비를 기다린다.
+    async function openKakaoRoadview(e) {
       if (e) e.preventDefault();
 
       if (currentLat === null || currentLon === null) {
@@ -1958,8 +1984,21 @@
 
       document.body.classList.add('roadview-open');
       document.getElementById('roadviewPanel').classList.add('active');
-      initKakaoRoadview(currentLat, currentLon);
+      const request = ++roadviewOpenRequest;
+      const coordsEl = document.getElementById('roadviewCoords');
+      coordsEl.textContent = '카카오 로드뷰를 불러오는 중입니다…';
       setTimeout(() => { if (map) map.invalidateSize(); if (kakaoRoadview) kakaoRoadview.relayout(); }, 350);
+      try {
+        await loadKakaoMaps();
+        if (request !== roadviewOpenRequest) return false;
+        initKakaoRoadview(currentLat, currentLon);
+        kakaoRoadview.relayout();
+      } catch (error) {
+        if (request === roadviewOpenRequest) {
+          coordsEl.textContent = '로드뷰를 불러오지 못했습니다. 연결 상태를 확인하고 로드뷰 보기 버튼을 다시 눌러주세요.';
+          console.error('카카오 로드뷰 로딩 실패:', error);
+        }
+      }
       return false;
     }
 
@@ -1983,13 +2022,16 @@
     // 좌표 → 가장 가까운 파노라마로 로드뷰 이동
     function setRoadviewPosition(lat, lon) {
       if (!kakaoRoadviewClient) return;
+      const request = ++roadviewPositionRequest;
       const pos = new kakao.maps.LatLng(lat, lon);
       kakaoRoadviewClient.getNearestPanoId(pos, 50, (panoId) => {
+        if (request !== roadviewPositionRequest) return;
         const coordsEl = document.getElementById('roadviewCoords');
         if (panoId === null) {
           if (coordsEl) coordsEl.textContent = '이 지점 근처에는 카카오 로드뷰 데이터가 없습니다.';
           return;
         }
+        if (coordsEl) coordsEl.textContent = `위도 ${lat.toFixed(6)}, 경도 ${lon.toFixed(6)} · 경로와 실시간 동기화`;
         kakaoRoadview.setPanoId(panoId, pos);
       });
     }
@@ -2037,6 +2079,8 @@
     }
 
     function closeKakaoRoadview() {
+      roadviewOpenRequest++;
+      roadviewPositionRequest++;
       document.body.classList.remove('roadview-open');
       document.getElementById('roadviewPanel').classList.remove('active');
       setTimeout(() => { if (map) map.invalidateSize(); }, 350);
